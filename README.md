@@ -40,6 +40,28 @@ Cada correo sale con:
   (el botón "Cancelar suscripción" de Gmail/Outlook)
 - identificación LSSI en el pie (razón social, CIF y dirección)
 
+## Reputación: qué se comparte y qué no
+
+La cuenta de SES la usan también `app.factukey.com`, `asesorialallave.es`,
+`asesoria.gestoriaprofesional.com` y `notificacion.mykasesores.com`. Lo que se
+comparte de verdad, y lo que no:
+
+| Nivel | ¿Se comparte? | Detalle |
+|---|---|---|
+| Dominio (Gmail/Outlook) | **No** | la campaña firma con `factukey.es` y la app con `app.factukey.com`: son reputaciones distintas |
+| Métricas de la campaña | **No** (desde ahora) | conjunto de configuración propio `campana-captacion` |
+| Lista de supresión de AWS | **Sí** | una dirección que rebota queda bloqueada para *toda* la cuenta |
+| Límite de rebotes/quejas de AWS | **Sí** | si se pasa, AWS revisa y puede parar **toda** la cuenta |
+| Direcciones IP | Sí, pero compartidas con todo AWS | no hay IP dedicada (ni conviene a este volumen) |
+
+Los envíos de la campaña llevan `ConfigurationSetName: campana-captacion`. Eso da
+dos cosas: sus rebotes y quejas se miden aparte, y se puede parar **solo** la
+campaña (`SendingOptions.SendingEnabled = false` en ese conjunto) sin tocar el
+correo de facturas de la app.
+
+Aislamiento total del límite de la cuenta: sólo se consigue con una **cuenta de
+AWS aparte** para la campaña.
+
 ## Baja en dos pasos
 
 El enlace del correo (GET) **ya no da de baja por sí solo**: abre una página con un

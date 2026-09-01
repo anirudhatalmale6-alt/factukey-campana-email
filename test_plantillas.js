@@ -83,6 +83,7 @@ function revisa(lista, nombre, tipo){
     // Cuerpo de la llamada a SES.
     const p = buildSes(row, tipo).ses;
     if (p.Destination.ToAddresses[0] !== 'prueba@ejemplo.com') bad(`[${nombre} #${i}] destinatario mal en el cuerpo de SES`);
+    if (p.ConfigurationSetName !== 'campana-captacion') bad(`[${nombre} #${i}] falta el conjunto de configuracion de la campana`);
     if (!p.Content.Simple.Body.Text.Data || !p.Content.Simple.Body.Html.Data) bad(`[${nombre} #${i}] a SES le falta una de las dos versiones`);
     const cab = p.Content.Simple.Headers.map(x => x.Name).join(',');
     if (cab !== 'List-Unsubscribe,List-Unsubscribe-Post') bad(`[${nombre} #${i}] faltan las cabeceras de baja: ${cab}`);

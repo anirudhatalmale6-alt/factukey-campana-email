@@ -842,6 +842,10 @@ function buildSes(row, tipo){
       FromEmailAddress: 'FactuKey <comercial@factukey.es>',
       Destination: { ToAddresses: [correo] },
       ReplyToAddresses: ['info@factukey.com'],
+      // Conjunto de configuración propio de la campaña: sus rebotes y quejas se
+      // miden aparte de los del correo de la app, y se puede parar SOLO la
+      // campaña sin tocar el envío de facturas.
+      ConfigurationSetName: 'campana-captacion',
       Content: {
         Simple: {
           Subject: { Data: out.subject, Charset: 'UTF-8' },
