@@ -19,18 +19,19 @@ CORE = io.open(os.path.join(HERE, 'plantillas_core.js'), encoding='utf-8').read(
 WRAPPER = """
 // --- n8n wrapper (%(tipo)s) ---
 const row = $json;
-const out = buildEmail(row, '%(tipo)s');
-return [{ json: {
-  email: (row.correo||'').trim(),
-  html: out.html,
-  subject: out.subject,
-  variante: out.variante,
-  total_plantillas: out.total,
-  id: row.id,
-  uuid: row.uuid,
-  web: row.web
-} }];
+const out = buildSes(row, '%(tipo)s');
+out.id = row.id;
+out.uuid = row.uuid;
+out.web = row.web;
+return [{ json: out }];
 """
+
+# El nodo awsSes de n8n solo manda HTML y no deja poner cabeceras propias.
+# Se sustituye por una llamada directa a la API de Amazon SES (v2 SendEmail)
+# firmada con la MISMA credencial de AWS, que si admite las dos versiones del
+# correo (texto + HTML) y las cabeceras List-Unsubscribe.
+CRED_AWS = {'aws': {'id': 'Du0M9XTcZskExTjN', 'name': 'AWS (IAM) account'}}
+SES_URL = 'https://email.us-east-1.amazonaws.com/v2/email/outbound-emails'
 
 # Escalera de cadencia: los primeros correos van mas seguidos y luego se espacian.
 CADENCIA = """  AND (
@@ -139,6 +140,26 @@ for wid, cfg in PLAN.items():
     if cfg['trigger'] not in conns:
         conns[cfg['trigger']] = {'main': [[{'node': 'Leer Pendientes', 'type': 'main', 'index': 0}]]}
         print('  ARREGLADO: el disparador no estaba conectado a nada')
+
+    # 4bis) el envio pasa por la API de SES: texto + HTML + cabeceras de baja
+    n = node(wf, 'Enviar Email')
+    n['type'] = 'n8n-nodes-base.httpRequest'
+    n['typeVersion'] = 4.2
+    n['parameters'] = {
+        'method': 'POST',
+        'url': SES_URL,
+        'authentication': 'predefinedCredentialType',
+        'nodeCredentialType': 'aws',
+        'sendBody': True,
+        'specifyBody': 'json',
+        'jsonBody': '={{ JSON.stringify($json.ses) }}',
+        'options': {},
+    }
+    n['credentials'] = CRED_AWS
+    # Si un correo concreto lo rechaza SES (direccion mal formada, etc.) el lote
+    # del dia debe seguir con los demas, no cortarse en seco.
+    n['onError'] = 'continueRegularOutput'
+    print('  envio: SES v2 con version en texto + List-Unsubscribe (un clic)')
 
     # 5) espera entre correos
     n = node(wf, 'Esperar')

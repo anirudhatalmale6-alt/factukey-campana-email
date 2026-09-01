@@ -78,6 +78,42 @@ function skeleton(v, unsub){
 </td></tr></table></body></html>`;
 }
 
+// Versión en texto plano. Va SIEMPRE junto a la HTML (multipart/alternative):
+// un correo comercial solo-HTML puntúa peor en los filtros y algunos clientes
+// de correo no muestran nada.
+function limpia(s){
+  return String(s || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&middot;/g, '·').replace(/&mdash;/g, '—').replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+
+function plainText(v, unsub){
+  const ctaUrl = v.ctaUrl || WEB;
+  const lineas = [
+    limpia(v.headline),
+    '',
+    limpia(v.intro),
+    '',
+    limpia(v.listTitle).toUpperCase(),
+  ];
+  v.bullets.forEach(b => lineas.push('- ' + limpia(b.t) + (b.d ? ': ' + limpia(b.d) : '')));
+  lineas.push('', limpia(v.highlightTitle), limpia(v.highlightText), '',
+    limpia(v.cta) + ': ' + ctaUrl,
+    '',
+    'O responde a este correo y te lo contamos sin compromiso.',
+    '',
+    '---',
+    'FactuKey · ' + WEB + ' · Instagram: @factukey',
+    EMPRESA + ' · CIF ' + CIF + ' · ' + DIR,
+    'Recibes este correo como comunicación comercial dirigida a empresas, autónomos y profesionales.',
+    'Para no recibir más: ' + unsub);
+  return lineas.join('\n');
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // 20 plantillas — EMPRESAS, AUTÓNOMOS Y PROFESIONALES
 // Una por funcionalidad real de FactuKey. Orden = orden de envío.
@@ -780,6 +816,51 @@ function buildEmail(row, tipo){
   const idx = ((veces % templates.length) + templates.length) % templates.length;
   const v = templates[idx];
   const path = isGest ? 'unsubscribe-factukey-gestorias' : 'unsubscribe-factukey-negocios';
-  const unsub = 'https://n8n.digitalnexo.es/webhook/' + path + '?uuid=' + encodeURIComponent(row.uuid || '');
-  return { subject: v.subject, html: skeleton(v, unsub), variante: idx, total: templates.length };
+  const q = '?uuid=' + encodeURIComponent(row.uuid || '');
+  // Enlace visible: GET, solo abre la página con el botón (no da de baja solo).
+  const unsub = 'https://n8n.digitalnexo.es/webhook/' + path + q;
+  // Cabecera List-Unsubscribe One-Click: POST, esa sí da de baja directamente.
+  const unsubPost = 'https://n8n.digitalnexo.es/webhook/' + path + '-baja' + q;
+  return {
+    subject: v.subject,
+    html: skeleton(v, unsub),
+    text: plainText(v, unsub),
+    unsub: unsub,
+    unsubPost: unsubPost,
+    variante: idx,
+    total: templates.length,
+  };
+}
+
+// Cuerpo exacto de la llamada a Amazon SES (v2 SendEmail). Se construye aquí
+// para no tener que escapar HTML dentro de una expresión de n8n.
+function buildSes(row, tipo){
+  const out = buildEmail(row, tipo);
+  const correo = String(row.correo || '').trim();
+  return {
+    ses: {
+      FromEmailAddress: 'FactuKey <comercial@factukey.es>',
+      Destination: { ToAddresses: [correo] },
+      ReplyToAddresses: ['info@factukey.com'],
+      Content: {
+        Simple: {
+          Subject: { Data: out.subject, Charset: 'UTF-8' },
+          Body: {
+            Text: { Data: out.text, Charset: 'UTF-8' },
+            Html: { Data: out.html, Charset: 'UTF-8' },
+          },
+          Headers: [
+            { Name: 'List-Unsubscribe', Value: '<' + out.unsubPost + '>, <' + out.unsub + '>' },
+            { Name: 'List-Unsubscribe-Post', Value: 'List-Unsubscribe=One-Click' },
+          ],
+        },
+      },
+    },
+    email: correo,
+    subject: out.subject,
+    html: out.html,
+    text: out.text,
+    variante: out.variante,
+    total_plantillas: out.total,
+  };
 }

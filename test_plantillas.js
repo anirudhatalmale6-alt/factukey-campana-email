@@ -1,7 +1,7 @@
 const fs = require('fs');
 const src = fs.readFileSync(__dirname + '/plantillas_core.js', 'utf8');
-const mod = new Function(src + '\nreturn {TEMPLATES_NEGOCIOS,TEMPLATES_GESTORIAS,buildEmail,skeleton};')();
-const { TEMPLATES_NEGOCIOS: N, TEMPLATES_GESTORIAS: G, buildEmail } = mod;
+const mod = new Function(src + '\nreturn {TEMPLATES_NEGOCIOS,TEMPLATES_GESTORIAS,buildEmail,buildSes,plainText,skeleton};')();
+const { TEMPLATES_NEGOCIOS: N, TEMPLATES_GESTORIAS: G, buildEmail, buildSes } = mod;
 
 let fail = 0;
 const bad = (m) => { console.log('  FALLO: ' + m); fail++; };
@@ -64,6 +64,31 @@ function revisa(lista, nombre, tipo){
     const abre = (h.match(/<table/g)||[]).length, cierra = (h.match(/<\/table>/g)||[]).length;
     if (abre !== cierra) bad(`[${nombre} #${i}] tablas descuadradas: ${abre} abiertas, ${cierra} cerradas`);
     if (Buffer.byteLength(h) > 102400) bad(`[${nombre} #${i}] el HTML pesa mas de 100 KB (Gmail lo recorta)`);
+
+    // Version en texto plano.
+    const t = out.text;
+    if (!t || t.length < 300) bad(`[${nombre} #${i}] la version en texto es demasiado corta`);
+    if (/<[a-z/][^>]*>/i.test(t)) bad(`[${nombre} #${i}] han quedado etiquetas HTML en la version en texto`);
+    if (/&[a-z]+;|&#\d+;/i.test(t)) bad(`[${nombre} #${i}] han quedado entidades HTML en la version en texto`);
+    if (/undefined|\[object Object\]|\$\{/.test(t)) bad(`[${nombre} #${i}] la version en texto tiene undefined`);
+    if (!t.includes(lista[i].ctaUrl)) bad(`[${nombre} #${i}] la version en texto no lleva el enlace del CTA`);
+    if (!t.includes('B25995374')) bad(`[${nombre} #${i}] la version en texto no lleva la identificacion LSSI`);
+    if (!t.includes(out.unsub)) bad(`[${nombre} #${i}] la version en texto no lleva el enlace de baja`);
+
+    // Enlaces de baja: el visible es GET (pagina con boton), el de la cabecera es POST.
+    if (!out.unsub.includes('uuid-de-prueba')) bad(`[${nombre} #${i}] el enlace de baja no lleva el uuid`);
+    if (!out.unsubPost.includes('-baja?uuid=')) bad(`[${nombre} #${i}] falta el endpoint POST de baja en un clic`);
+    if (out.unsubPost === out.unsub) bad(`[${nombre} #${i}] el enlace visible y el de un clic no pueden ser el mismo`);
+
+    // Cuerpo de la llamada a SES.
+    const p = buildSes(row, tipo).ses;
+    if (p.Destination.ToAddresses[0] !== 'prueba@ejemplo.com') bad(`[${nombre} #${i}] destinatario mal en el cuerpo de SES`);
+    if (!p.Content.Simple.Body.Text.Data || !p.Content.Simple.Body.Html.Data) bad(`[${nombre} #${i}] a SES le falta una de las dos versiones`);
+    const cab = p.Content.Simple.Headers.map(x => x.Name).join(',');
+    if (cab !== 'List-Unsubscribe,List-Unsubscribe-Post') bad(`[${nombre} #${i}] faltan las cabeceras de baja: ${cab}`);
+    if (!/^<https:\/\/[^>]+-baja\?uuid=[^>]+>, <https:\/\/[^>]+>$/.test(p.Content.Simple.Headers[0].Value))
+      bad(`[${nombre} #${i}] List-Unsubscribe mal formada: ${p.Content.Simple.Headers[0].Value}`);
+    JSON.parse(JSON.stringify(p)); // tiene que ser JSON valido tal cual sale
   });
 
   // Vuelta completa: la plantilla 20 vuelve a la 0 (red de seguridad del modulo).
