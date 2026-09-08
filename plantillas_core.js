@@ -10,7 +10,11 @@
 
 const LOGO = 'https://factukey.com/wp-content/uploads/factukey-logo-white.png';
 const WEB  = 'https://factukey.com';
-const APP  = 'https://app.factukey.com/register';
+// OJO con esta ruta: la aplicacion NO tiene /register, tiene /registro. Con
+// /register el router mandaba al login, asi que quien venia de estos correos
+// se encontraba un formulario de acceso en vez de uno de alta y no podia
+// registrarse. Es el fallo por el que "los correos no funcionaban".
+const APP  = 'https://app.factukey.com/registro';
 const EMPRESA = 'Future Times Business S.L.';
 const CIF = 'B25995374';
 const DIR = 'Calle Valparaíso 2, 28944 Fuenlabrada (Madrid)';
